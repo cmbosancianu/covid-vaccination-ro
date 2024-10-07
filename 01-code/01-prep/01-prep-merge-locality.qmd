@@ -1,0 +1,653 @@
+---
+title: "Prepare and merge locality-level data"
+author:
+  name: "Constantin Manuel Bosancianu"
+  orcid: 0000-0001-7950-9798
+  email: bosancianu@icloud.com
+date: last-modified
+execute:
+  eval: true
+  echo: true
+  warning: false
+  error: false
+  results: 'hide'
+format:
+  html:
+    toc: true
+    code-fold: true
+    self-contained: true
+    toc-location: left
+    theme:
+        light: flatly
+        dark: darkly
+    number-sections: true
+    reference-location: margin
+    embed-resources: true
+---
+
+# Introduction
+
+This file performs the harmonization and merging of all data sources at the locality-level, including the vaccine take-up rate, along with all other relevant covariates. All data sets here have already undergone basic cleaning, such as being exported in a standard **Feather** format, though they have not been also been prepared for merging.
+
+```{python load-libraries}
+import pandas as pd
+import numpy as np
+import seaborn as sbn
+import os
+from fuzzywuzzy import fuzz
+from fuzzywuzzy import process
+```
+
+I also define a simple function that helps with the data cleaning process.
+
+```{python helper-funs}
+def fun_harmonize_locality(data):
+  data.loc[(data['county_name'] == 'Alba') & (data['uat_name'] == 'Rimetea'), 'uat_name'] = 'Rametea'
+  data.loc[(data['county_name'] == 'Alba') & (data['uat_name'] == 'Sintimbru'), 'uat_name'] = 'Santimbru'
+  data.loc[(data['county_name'] == 'Alba') & (data['uat_name'] == 'Sincel'), 'uat_name'] = 'Sancel'
+  data.loc[(data['county_name'] == 'Alba') & (data['uat_name'] == 'Rimet'), 'uat_name'] = 'Ramet'
+  data.loc[(data['county_name'] == 'Arad') & (data['uat_name'] == 'Oras Pincota'), 'uat_name'] = 'Oras Pancota'
+  data.loc[(data['county_name'] == 'Arges') & (data['uat_name'] == 'Valea Mare-Pravat'), 'uat_name'] = 'Valea Mare Pravat'
+  data.loc[(data['county_name'] == 'Arges') & (data['uat_name'] == 'Stilpeni'), 'uat_name'] = 'Stalpeni'
+  data.loc[(data['county_name'] == 'Arges') & (data['uat_name'] == 'Dirmanesti'), 'uat_name'] = 'Darmanesti'
+  data.loc[(data['county_name'] == 'Arges') & (data['uat_name'] == 'Birla'), 'uat_name'] = 'Barla'
+  data.loc[(data['county_name'] == 'Arges') & (data['uat_name'] == 'Dimbovicioara'), 'uat_name'] = 'Dambovicioara'
+  data.loc[(data['county_name'] == 'Arges') & (data['uat_name'] == 'Sloboia'), 'uat_name'] = 'Slobozia'
+  data.loc[(data['county_name'] == 'Arges') & (data['uat_name'] == 'Hirsesti'), 'uat_name'] = 'Harsesti'
+  data.loc[(data['county_name'] == 'Bihor') & (data['uat_name'] == 'Sintandrei'), 'uat_name'] = 'Santandrei'
+  data.loc[(data['county_name'] == 'Bihor') & (data['uat_name'] == 'Sinmartin'), 'uat_name'] = 'Sanmartin'
+  data.loc[(data['county_name'] == 'Bihor') & (data['uat_name'] == 'Cimpani'), 'uat_name'] = 'Campani'
+  data.loc[(data['county_name'] == 'Bihor') & (data['uat_name'] == 'Capilna'), 'uat_name'] = 'Capalna'
+  data.loc[(data['county_name'] == 'Bihor') & (data['uat_name'] == 'Simbata'), 'uat_name'] = 'Sambata'
+  data.loc[(data['county_name'] == 'Bihor') & (data['uat_name'] == 'Pomeeu'), 'uat_name'] = 'Pomezeu'
+  data.loc[(data['county_name'] == 'Bistrita-Nasaud') & (data['uat_name'] == 'Chiua'), 'uat_name'] = 'Chiuza'
+  data.loc[(data['county_name'] == 'Bistrita-Nasaud') & (data['uat_name'] == 'Prundu Birgaului'), 'uat_name'] = 'Prundu Bargaului'
+  data.loc[(data['county_name'] == 'Bistrita-Nasaud') & (data['uat_name'] == 'Silivasu de Cimpie'), 'uat_name'] = 'Silivasu de Campie'
+  data.loc[(data['county_name'] == 'Bistrita-Nasaud') & (data['uat_name'] == 'Sinmihaiu de Cimpie'), 'uat_name'] = 'Sanmihaiu de Campie'
+  data.loc[(data['county_name'] == 'Bistrita-Nasaud') & (data['uat_name'] == 'Liveile'), 'uat_name'] = 'Livezile'
+  data.loc[(data['county_name'] == 'Bistrita-Nasaud') & (data['uat_name'] == 'Micestii de Cimpie'), 'uat_name'] = 'Micestii de Campie'
+  data.loc[(data['county_name'] == 'Bistrita-Nasaud') & (data['uat_name'] == 'Bistrita Birgaului'), 'uat_name'] = 'Bistrita Bargaului'
+  data.loc[(data['county_name'] == 'Bistrita-Nasaud') & (data['uat_name'] == 'Oras Singeorz-Bai'), 'uat_name'] = 'Oras Sangeorz-Bai'
+  data.loc[(data['county_name'] == 'Bistrita-Nasaud') & (data['uat_name'] == 'Josenii Birgaului'), 'uat_name'] = 'Josenii Bargaului'
+  data.loc[(data['county_name'] == 'Bistrita-Nasaud') & (data['uat_name'] == 'Tirlisua'), 'uat_name'] = 'Tarlisua'
+  data.loc[(data['county_name'] == 'Bistrita-Nasaud') & (data['uat_name'] == 'Tiha Birgaului'), 'uat_name'] = 'Tiha Bargaului'
+  data.loc[(data['county_name'] == 'Botosani') & (data['uat_name'] == 'Pomirla'), 'uat_name'] = 'Pomarla'
+  data.loc[(data['county_name'] == 'Botosani') & (data['uat_name'] == 'Havirna'), 'uat_name'] = 'Havarna'
+  data.loc[(data['county_name'] == 'Botosani') & (data['uat_name'] == 'Dingeni'), 'uat_name'] = 'Dangeni'
+  data.loc[(data['county_name'] == 'Braila') & (data['uat_name'] == 'Rimnicelu'), 'uat_name'] = 'Ramnicelu'
+  data.loc[(data['county_name'] == 'Braila') & (data['uat_name'] == 'Viiru'), 'uat_name'] = 'Viziru'
+  data.loc[(data['county_name'] == 'Brasov') & (data['uat_name'] == 'Sinpetru'), 'uat_name'] = 'Sanpetru'
+  data.loc[(data['county_name'] == 'Brasov') & (data['uat_name'] == 'Oras Arnesti'), 'uat_name'] = 'Oras Zarnesti'
+  data.loc[(data['county_name'] == 'Brasov') & (data['uat_name'] == 'Vama Buaului'), 'uat_name'] = 'Vama Buzaului'
+  data.loc[(data['county_name'] == 'Brasov') & (data['uat_name'] == 'Hoghi'), 'uat_name'] = 'Hoghiz'
+  data.loc[(data['county_name'] == 'Brasov') & (data['uat_name'] == 'Cribav'), 'uat_name'] = 'Crizbav'
+  data.loc[(data['county_name'] == 'Cluj') & (data['uat_name'] == 'Risca'), 'uat_name'] = 'Rasca'
+  data.loc[(data['county_name'] == 'Harghita') & (data['uat_name'] == 'Municipiul Miercurea-Ciuc'), 'uat_name'] = 'Municipiul Miercurea Ciuc'
+  data.loc[(data['county_name'] == 'Ilfov') & (data['uat_name'] == 'Oras Popesti-Leordeni'), 'uat_name'] = 'Oras Popesti Leordeni'
+  data.loc[(data['county_name'] == 'Ilfov') & (data['uat_name'] == 'Oras Targu-Neamt'), 'uat_name'] = 'Oras Targu Neamt'
+  data.loc[(data['county_name'] == 'Tulcea') & (data['uat_name'] == 'I.C.Bratianu'), 'uat_name'] = 'I.C. Bratianu'
+  return(data)
+
+# Function for fuzzy matching
+# Taken (with slight adaptations) from: https://stackoverflow.com/a/56315491
+def fuzzy_merge(df_1, df_2, key1, key2, threshold = 90, limit = 2):
+    """
+    :param df_1: the left table to join
+    :param df_2: the right table to join
+    :param key1: key column of the left table
+    :param key2: key column of the right table
+    :param threshold: how close the matches should be to return a match, based on Levenshtein distance
+    :param limit: the amount of matches that will get returned, these are sorted high to low
+    :return: dataframe with boths keys and matches
+    """
+    s = df_2[key2].tolist()
+    
+    m = df_1[key1].apply(lambda x: process.extract(x, s, limit = limit))    
+    df_1['matches'] = m
+    
+    m2 = df_1['matches'].apply(lambda x: ', '.join([i[0] for i in x if i[1] >= threshold]))
+    df_1['matches'] = m2
+    
+    df_2.rename(columns = {key2: 'matches'}, inplace = True)
+
+    df_1 = df_1.merge(df_2,
+                      on = 'matches',
+                      how = 'left')
+
+    return df_1
+```
+
+# Data input
+
+## Election
+
+## Covid-19 vaccination data
+
+The information on locality-level population in 2020 and the number of residents with 1 dose of vaccine was only provided in the May 2021 data extract. This is why the information is missing for the remaining months in 2021, and all time periods in 2022.
+
+```{python read-data-1}
+df_covid = pd.read_feather(path = '../../02-data/02-covid/20240822-vaccination-coverage.feather')
+```
+
+## Election results
+
+```{python read-data-2}
+df_election = pd.read_feather(path = '../../02-data/01-electoral/20240812-local-results-2020.feather')
+```
+
+## Medical system
+
+```{python read-data-3}
+df_medical = pd.read_feather(path = '../../02-data/03-medical/20240826-GPs-per-locality.feather')
+```
+
+## Population
+
+```{python read-data-4}
+df_diversity = pd.read_feather(path = '../../02-data/04-population/20240905-locality-diversity-2021.feather')
+```
+
+
+# Cleaning
+
+## Election
+
+The 2 most important operations in this section are:
+
+* computing the locality-level electoral indicator based on the election data
+* harmonizing locality names between the different data sets prior to merging
+
+The 2020 election results refer to mayoral contests, which represent single-member districts; a single voting round was used to determine the winner.^[A second round was organized in only 7 localities in the country (across 3 counties), in instances where the top 2 candidates received the same number of votes.] A standard measure of competitiveness in this setting is the difference in vote shares between the seat winner and the runner-up.
+
+There are small discrepancies in how localities are named, due to the existence of multiple special Romanian characters that can denote the same sound, e.g. `î` and `â` (producing either `Rimetea` or `Rametea` after cleaning, depending on the data source). A fuzzy matching could be performed (through the `fuzzy-match` or `FuzzyWuzzy` libraries), but given that there are only a few instances of this happening, they can be corrected manually.
+
+The largest amount of corrections needs to be performed on the data related to number of doctors, given that for it municipalities and towns only have their standard name.
+
+```{python harmonize-names}
+df_covid = fun_harmonize_locality(df_covid)
+df_election = fun_harmonize_locality(df_election)
+df_medical = fun_harmonize_locality(df_medical)
+
+df_medical.loc[(df_medical['county_name'] == 'Alba') & (df_medical['uat_name'] == 'Alba Iulia'), 'uat_name'] = 'Municipiul Alba Iulia'
+df_medical.loc[(df_medical['county_name'] == 'Alba') & (df_medical['uat_name'] == 'Aiud'), 'uat_name'] = 'Municipiul Aiud'
+df_medical.loc[(df_medical['county_name'] == 'Alba') & (df_medical['uat_name'] == 'Blaj'), 'uat_name'] = 'Municipiul Blaj'
+df_medical.loc[(df_medical['county_name'] == 'Alba') & (df_medical['uat_name'] == 'Teius'), 'uat_name'] = 'Oras Teius'
+df_medical.loc[(df_medical['county_name'] == 'Alba') & (df_medical['uat_name'] == 'Cugir'), 'uat_name'] = 'Oras Cugir'
+df_medical.loc[(df_medical['county_name'] == 'Alba') & (df_medical['uat_name'] == 'Sebes'), 'uat_name'] = 'Municipiul Sebes'
+df_medical.loc[(df_medical['county_name'] == 'Alba') & (df_medical['uat_name'] == 'Ocna Mures'), 'uat_name'] = 'Oras Ocna Mures'
+df_medical.loc[(df_medical['county_name'] == 'Alba') & (df_medical['uat_name'] == 'Abrud'), 'uat_name'] = 'Oras Abrud'
+df_medical.loc[(df_medical['county_name'] == 'Alba') & (df_medical['uat_name'] == 'Zlatna'), 'uat_name'] = 'Oras Zlatna'
+df_medical.loc[(df_medical['county_name'] == 'Alba') & (df_medical['uat_name'] == 'Baia de Aries'), 'uat_name'] = 'Oras Baia de Aries'
+df_medical.loc[(df_medical['county_name'] == 'Alba') & (df_medical['uat_name'] == 'Cimpeni'), 'uat_name'] = 'Oras Campeni'
+
+df_medical.loc[(df_medical['county_name'] == 'Arad') & (df_medical['uat_name'] == 'Chisineu-Cris'), 'uat_name'] = 'Oras Chisineu-Cris'
+df_medical.loc[(df_medical['county_name'] == 'Arad') & (df_medical['uat_name'] == 'Ineu'), 'uat_name'] = 'Oras Ineu'
+df_medical.loc[(df_medical['county_name'] == 'Arad') & (df_medical['uat_name'] == 'Sebis'), 'uat_name'] = 'Oras Sebis'
+df_medical.loc[(df_medical['county_name'] == 'Arad') & (df_medical['uat_name'] == 'Lipova'), 'uat_name'] = 'Oras Lipova'
+df_medical.loc[(df_medical['county_name'] == 'Arad') & (df_medical['uat_name'] == 'Pecica'), 'uat_name'] = 'Oras Pecica'
+df_medical.loc[(df_medical['county_name'] == 'Arad') & (df_medical['uat_name'] == 'Nadlac'), 'uat_name'] = 'Oras Nadlac'
+df_medical.loc[(df_medical['county_name'] == 'Arad') & (df_medical['uat_name'] == 'Arad'), 'uat_name'] = 'Municipiul Arad'
+df_medical.loc[(df_medical['county_name'] == 'Arad') & (df_medical['uat_name'] == 'Curtici'), 'uat_name'] = 'Oras Curtici'
+df_medical.loc[(df_medical['county_name'] == 'Arad') & (df_medical['uat_name'] == 'Santana'), 'uat_name'] = 'Oras Santana'
+df_medical.loc[(df_medical['county_name'] == 'Arad') & (df_medical['uat_name'] == 'Pincota'), 'uat_name'] = 'Oras Pancota'
+
+df_medical.loc[(df_medical['county_name'] == 'Arges') & (df_medical['uat_name'] == 'Pitesti'), 'uat_name'] = 'Municipiul Pitesti'
+df_medical.loc[(df_medical['county_name'] == 'Arges') & (df_medical['uat_name'] == 'Campulung'), 'uat_name'] = 'Municipiul Campulung'
+df_medical.loc[(df_medical['county_name'] == 'Arges') & (df_medical['uat_name'] == 'Curtea de Arges'), 'uat_name'] = 'Municipiul Curtea de Arges'
+df_medical.loc[(df_medical['county_name'] == 'Arges') & (df_medical['uat_name'] == 'Topoloveni'), 'uat_name'] = 'Oras Topoloveni'
+df_medical.loc[(df_medical['county_name'] == 'Arges') & (df_medical['uat_name'] == 'Stefanesti'), 'uat_name'] = 'Oras Stefanesti'
+df_medical.loc[(df_medical['county_name'] == 'Arges') & (df_medical['uat_name'] == 'Mioveni'), 'uat_name'] = 'Oras Mioveni'
+df_medical.loc[(df_medical['county_name'] == 'Arges') & (df_medical['uat_name'] == 'Costesti'), 'uat_name'] = 'Oras Costesti'
+
+df_medical.loc[(df_medical['county_name'] == 'Bacau') & (df_medical['uat_name'] == 'Onesti'), 'uat_name'] = 'Municipiul Onesti'
+df_medical.loc[(df_medical['county_name'] == 'Bacau') & (df_medical['uat_name'] == 'Bacau'), 'uat_name'] = 'Municipiul Bacau'
+df_medical.loc[(df_medical['county_name'] == 'Bacau') & (df_medical['uat_name'] == 'Moinesti'), 'uat_name'] = 'Municipiul Moinesti'
+df_medical.loc[(df_medical['county_name'] == 'Bacau') & (df_medical['uat_name'] == 'Tirgu Ocna'), 'uat_name'] = 'Oras Targu Ocna'
+df_medical.loc[(df_medical['county_name'] == 'Bacau') & (df_medical['uat_name'] == 'Comanesti'), 'uat_name'] = 'Oras Comanesti'
+df_medical.loc[(df_medical['county_name'] == 'Bacau') & (df_medical['uat_name'] == 'Slanic-Moldova'), 'uat_name'] = 'Oras Slanic-Moldova'
+df_medical.loc[(df_medical['county_name'] == 'Bacau') & (df_medical['uat_name'] == 'Buhusi'), 'uat_name'] = 'Oras Buhusi'
+df_medical.loc[(df_medical['county_name'] == 'Bacau') & (df_medical['uat_name'] == 'Darmanesti'), 'uat_name'] = 'Oras Darmanesti'
+
+df_medical.loc[(df_medical['county_name'] == 'Bihor') & (df_medical['uat_name'] == 'Oradea'), 'uat_name'] = 'Municipiul Oradea'
+df_medical.loc[(df_medical['county_name'] == 'Bihor') & (df_medical['uat_name'] == 'Beius'), 'uat_name'] = 'Municipiul Beius'
+df_medical.loc[(df_medical['county_name'] == 'Bihor') & (df_medical['uat_name'] == 'Salonta'), 'uat_name'] = 'Municipiul Salonta'
+df_medical.loc[(df_medical['county_name'] == 'Bihor') & (df_medical['uat_name'] == 'Marghita'), 'uat_name'] = 'Municipiul Marghita'
+df_medical.loc[(df_medical['county_name'] == 'Bihor') & (df_medical['uat_name'] == 'Stei'), 'uat_name'] = 'Oras Stei'
+df_medical.loc[(df_medical['county_name'] == 'Bihor') & (df_medical['uat_name'] == 'Valea lui Mihai'), 'uat_name'] = 'Oras Valea lui Mihai'
+df_medical.loc[(df_medical['county_name'] == 'Bihor') & (df_medical['uat_name'] == 'Nucet'), 'uat_name'] = 'Oras Nucet'
+df_medical.loc[(df_medical['county_name'] == 'Bihor') & (df_medical['uat_name'] == 'Vascau'), 'uat_name'] = 'Oras Vascau'
+df_medical.loc[(df_medical['county_name'] == 'Bihor') & (df_medical['uat_name'] == 'Alesd'), 'uat_name'] = 'Oras Alesd'
+df_medical.loc[(df_medical['county_name'] == 'Bihor') & (df_medical['uat_name'] == 'Sacueni'), 'uat_name'] = 'Oras Sacueni'
+
+df_medical.loc[(df_medical['county_name'] == 'Bistrita-Nasaud') & (df_medical['uat_name'] == 'Bistrita'), 'uat_name'] = 'Municipiul Bistrita'
+df_medical.loc[(df_medical['county_name'] == 'Bistrita-Nasaud') & (df_medical['uat_name'] == 'Beclean'), 'uat_name'] = 'Oras Beclean'
+df_medical.loc[(df_medical['county_name'] == 'Bistrita-Nasaud') & (df_medical['uat_name'] == 'Nasaud'), 'uat_name'] = 'Oras Nasaud'
+df_medical.loc[(df_medical['county_name'] == 'Bistrita-Nasaud') & (df_medical['uat_name'] == 'Singeorz-Bai'), 'uat_name'] = 'Oras Sangeorz-Bai'
+
+df_medical.loc[(df_medical['county_name'] == 'Botosani') & (df_medical['uat_name'] == 'Botosani'), 'uat_name'] = 'Municipiul Botosani'
+df_medical.loc[(df_medical['county_name'] == 'Botosani') & (df_medical['uat_name'] == 'Dorohoi'), 'uat_name'] = 'Municipiul Dorohoi'
+df_medical.loc[(df_medical['county_name'] == 'Botosani') & (df_medical['uat_name'] == 'Saveni'), 'uat_name'] = 'Oras Saveni'
+df_medical.loc[(df_medical['county_name'] == 'Botosani') & (df_medical['uat_name'] == 'Stefanesti'), 'uat_name'] = 'Oras Stefanesti'
+df_medical.loc[(df_medical['county_name'] == 'Botosani') & (df_medical['uat_name'] == 'Bucecea'), 'uat_name'] = 'Oras Bucecea'
+df_medical.loc[(df_medical['county_name'] == 'Botosani') & (df_medical['uat_name'] == 'Darabani'), 'uat_name'] = 'Oras Darabani'
+df_medical.loc[(df_medical['county_name'] == 'Botosani') & (df_medical['uat_name'] == 'Flamanzi'), 'uat_name'] = 'Oras Flamanzi'
+
+df_medical.loc[(df_medical['county_name'] == 'Braila') & (df_medical['uat_name'] == 'Braila'), 'uat_name'] = 'Municipiul Braila'
+df_medical.loc[(df_medical['county_name'] == 'Braila') & (df_medical['uat_name'] == 'Faurei'), 'uat_name'] = 'Oras Faurei'
+df_medical.loc[(df_medical['county_name'] == 'Braila') & (df_medical['uat_name'] == 'Ianca'), 'uat_name'] = 'Oras Ianca'
+df_medical.loc[(df_medical['county_name'] == 'Braila') & (df_medical['uat_name'] == 'Insuratei'), 'uat_name'] = 'Oras Insuratei'
+
+df_medical.loc[(df_medical['county_name'] == 'Brasov') & (df_medical['uat_name'] == 'Brasov'), 'uat_name'] = 'Municipiul Brasov'
+df_medical.loc[(df_medical['county_name'] == 'Brasov') & (df_medical['uat_name'] == 'Sacele'), 'uat_name'] = 'Municipiul Sacele'
+df_medical.loc[(df_medical['county_name'] == 'Brasov') & (df_medical['uat_name'] == 'Codlea'), 'uat_name'] = 'Municipiul Codlea'
+df_medical.loc[(df_medical['county_name'] == 'Brasov') & (df_medical['uat_name'] == 'Fagaras'), 'uat_name'] = 'Municipiul Fagaras'
+df_medical.loc[(df_medical['county_name'] == 'Brasov') & (df_medical['uat_name'] == 'Ghimbav'), 'uat_name'] = 'Oras Ghimbav'
+df_medical.loc[(df_medical['county_name'] == 'Brasov') & (df_medical['uat_name'] == 'Predeal'), 'uat_name'] = 'Oras Predeal'
+df_medical.loc[(df_medical['county_name'] == 'Brasov') & (df_medical['uat_name'] == 'Rasnov'), 'uat_name'] = 'Oras Rasnov'
+df_medical.loc[(df_medical['county_name'] == 'Brasov') & (df_medical['uat_name'] == 'Victoria'), 'uat_name'] = 'Oras Victoria'
+df_medical.loc[(df_medical['county_name'] == 'Brasov') & (df_medical['uat_name'] == 'Rupea'), 'uat_name'] = 'Oras Rupea'
+df_medical.loc[(df_medical['county_name'] == 'Brasov') & (df_medical['uat_name'] == 'Zarnesti'), 'uat_name'] = 'Oras Zarnesti'
+
+df_medical.loc[(df_medical['county_name'] == 'Bucuresti') & (df_medical['uat_name'] == 'Bucuresti'), 'uat_name'] = 'Municipiul Bucuresti'
+
+df_medical.loc[(df_medical['county_name'] == 'Buzau') & (df_medical['uat_name'] == 'Buzau'), 'uat_name'] = 'Municipiul Buzau'
+df_medical.loc[(df_medical['county_name'] == 'Buzau') & (df_medical['uat_name'] == 'Ramnicu Sarat'), 'uat_name'] = 'Municipiul Ramnicu Sarat'
+df_medical.loc[(df_medical['county_name'] == 'Buzau') & (df_medical['uat_name'] == 'Nehoiu'), 'uat_name'] = 'Oras Nehoiu'
+df_medical.loc[(df_medical['county_name'] == 'Buzau') & (df_medical['uat_name'] == 'Patarlagele'), 'uat_name'] = 'Oras Patarlagele'
+df_medical.loc[(df_medical['county_name'] == 'Buzau') & (df_medical['uat_name'] == 'Pogoanele'), 'uat_name'] = 'Oras Pogoanele'
+
+df_medical.loc[(df_medical['county_name'] == 'Calarasi') & (df_medical['uat_name'] == 'Calarasi'), 'uat_name'] = 'Municipiul Calarasi'
+df_medical.loc[(df_medical['county_name'] == 'Calarasi') & (df_medical['uat_name'] == 'Oltenita'), 'uat_name'] = 'Municipiul Oltenita'
+df_medical.loc[(df_medical['county_name'] == 'Calarasi') & (df_medical['uat_name'] == 'Lehliu Gara'), 'uat_name'] = 'Oras Lehliu-Gara'
+df_medical.loc[(df_medical['county_name'] == 'Calarasi') & (df_medical['uat_name'] == 'Fundulea'), 'uat_name'] = 'Oras Fundulea'
+df_medical.loc[(df_medical['county_name'] == 'Calarasi') & (df_medical['uat_name'] == 'Budesti'), 'uat_name'] = 'Oras Budesti'
+
+df_medical.loc[(df_medical['county_name'] == 'Caras-Severin') & (df_medical['uat_name'] == 'Resita'), 'uat_name'] = 'Municipiul Resita'
+df_medical.loc[(df_medical['county_name'] == 'Caras-Severin') & (df_medical['uat_name'] == 'Caransebes'), 'uat_name'] = 'Municipiul Caransebes'
+df_medical.loc[(df_medical['county_name'] == 'Caras-Severin') & (df_medical['uat_name'] == 'Baile Herculane'), 'uat_name'] = 'Oras Baile Herculane'
+df_medical.loc[(df_medical['county_name'] == 'Caras-Severin') & (df_medical['uat_name'] == 'Oravita'), 'uat_name'] = 'Oras Oravita'
+df_medical.loc[(df_medical['county_name'] == 'Caras-Severin') & (df_medical['uat_name'] == 'Otelu Rosu'), 'uat_name'] = 'Oras Otelu Rosu'
+df_medical.loc[(df_medical['county_name'] == 'Caras-Severin') & (df_medical['uat_name'] == 'Bocsa'), 'uat_name'] = 'Oras Bocsa'
+df_medical.loc[(df_medical['county_name'] == 'Caras-Severin') & (df_medical['uat_name'] == 'Moldova Noua'), 'uat_name'] = 'Oras Moldova Noua'
+df_medical.loc[(df_medical['county_name'] == 'Caras-Severin') & (df_medical['uat_name'] == 'Anina'), 'uat_name'] = 'Oras Anina'
+
+df_medical.loc[(df_medical['county_name'] == 'Cluj') & (df_medical['uat_name'] == 'Cluj-Napoca'), 'uat_name'] = 'Municipiul Cluj-Napoca'
+df_medical.loc[(df_medical['county_name'] == 'Cluj') & (df_medical['uat_name'] == 'Gherla'), 'uat_name'] = 'Municipiul Gherla'
+df_medical.loc[(df_medical['county_name'] == 'Cluj') & (df_medical['uat_name'] == 'Dej'), 'uat_name'] = 'Municipiul Dej'
+df_medical.loc[(df_medical['county_name'] == 'Cluj') & (df_medical['uat_name'] == 'Campia Turzii'), 'uat_name'] = 'Municipiul Campia Turzii'
+df_medical.loc[(df_medical['county_name'] == 'Cluj') & (df_medical['uat_name'] == 'Turda'), 'uat_name'] = 'Municipiul Turda'
+df_medical.loc[(df_medical['county_name'] == 'Cluj') & (df_medical['uat_name'] == 'Huedin'), 'uat_name'] = 'Oras Huedin'
+
+df_medical.loc[(df_medical['county_name'] == 'Constanta') & (df_medical['uat_name'] == 'Constanta'), 'uat_name'] = 'Municipiul Constanta'
+df_medical.loc[(df_medical['county_name'] == 'Constanta') & (df_medical['uat_name'] == 'Mangalia'), 'uat_name'] = 'Municipiul Mangalia'
+df_medical.loc[(df_medical['county_name'] == 'Constanta') & (df_medical['uat_name'] == 'Medgidia'), 'uat_name'] = 'Municipiul Medgidia'
+df_medical.loc[(df_medical['county_name'] == 'Constanta') & (df_medical['uat_name'] == 'Techirghiol'), 'uat_name'] = 'Oras Techirghiol'
+df_medical.loc[(df_medical['county_name'] == 'Constanta') & (df_medical['uat_name'] == 'Eforie'), 'uat_name'] = 'Oras Eforie'
+df_medical.loc[(df_medical['county_name'] == 'Constanta') & (df_medical['uat_name'] == 'Navodari'), 'uat_name'] = 'Oras Navodari'
+df_medical.loc[(df_medical['county_name'] == 'Constanta') & (df_medical['uat_name'] == 'Ovidiu'), 'uat_name'] = 'Oras Ovidiu'
+df_medical.loc[(df_medical['county_name'] == 'Constanta') & (df_medical['uat_name'] == 'Cernavoda'), 'uat_name'] = 'Oras Cernavoda'
+df_medical.loc[(df_medical['county_name'] == 'Constanta') & (df_medical['uat_name'] == 'Murfatlar'), 'uat_name'] = 'Oras Murfatlar'
+df_medical.loc[(df_medical['county_name'] == 'Constanta') & (df_medical['uat_name'] == 'Harsova'), 'uat_name'] = 'Oras Harsova'
+df_medical.loc[(df_medical['county_name'] == 'Constanta') & (df_medical['uat_name'] == 'Negru Voda'), 'uat_name'] = 'Oras Negru Voda'
+
+df_medical.loc[(df_medical['county_name'] == 'Covasna') & (df_medical['uat_name'] == 'Sfintu Gheorghe'), 'uat_name'] = 'Municipiul Sfantu Gheorghe'
+df_medical.loc[(df_medical['county_name'] == 'Covasna') & (df_medical['uat_name'] == 'Targu Secuiesc'), 'uat_name'] = 'Municipiul Targu Secuiesc'
+df_medical.loc[(df_medical['county_name'] == 'Covasna') & (df_medical['uat_name'] == 'Covasna'), 'uat_name'] = 'Oras Covasna'
+df_medical.loc[(df_medical['county_name'] == 'Covasna') & (df_medical['uat_name'] == 'Intorsura Buzaului'), 'uat_name'] = 'Oras Intorsura Buzaului'
+df_medical.loc[(df_medical['county_name'] == 'Covasna') & (df_medical['uat_name'] == 'Baraolt'), 'uat_name'] = 'Oras Baraolt'
+
+df_medical.loc[(df_medical['county_name'] == 'Dambovita') & (df_medical['uat_name'] == 'Tirgoviste'), 'uat_name'] = 'Municipiul Targoviste'
+df_medical.loc[(df_medical['county_name'] == 'Dambovita') & (df_medical['uat_name'] == 'Moreni'), 'uat_name'] = 'Municipiul Moreni'
+df_medical.loc[(df_medical['county_name'] == 'Dambovita') & (df_medical['uat_name'] == 'Gaesti'), 'uat_name'] = 'Oras Gaesti'
+df_medical.loc[(df_medical['county_name'] == 'Dambovita') & (df_medical['uat_name'] == 'Fieni'), 'uat_name'] = 'Oras Fieni'
+df_medical.loc[(df_medical['county_name'] == 'Dambovita') & (df_medical['uat_name'] == 'Titu'), 'uat_name'] = 'Oras Titu'
+df_medical.loc[(df_medical['county_name'] == 'Dambovita') & (df_medical['uat_name'] == 'Racari'), 'uat_name'] = 'Oras Racari'
+df_medical.loc[(df_medical['county_name'] == 'Dambovita') & (df_medical['uat_name'] == 'Pucioasa'), 'uat_name'] = 'Oras Pucioasa'
+
+df_medical.loc[(df_medical['county_name'] == 'Dolj') & (df_medical['uat_name'] == 'Bailesti'), 'uat_name'] = 'Municipiul Bailesti'
+df_medical.loc[(df_medical['county_name'] == 'Dolj') & (df_medical['uat_name'] == 'Calafat'), 'uat_name'] = 'Municipiul Calafat'
+df_medical.loc[(df_medical['county_name'] == 'Dolj') & (df_medical['uat_name'] == 'Craiova'), 'uat_name'] = 'Municipiul Craiova'
+df_medical.loc[(df_medical['county_name'] == 'Dolj') & (df_medical['uat_name'] == 'Bechet'), 'uat_name'] = 'Oras Bechet'
+df_medical.loc[(df_medical['county_name'] == 'Dolj') & (df_medical['uat_name'] == 'Dabuleni'), 'uat_name'] = 'Oras Dabuleni'
+df_medical.loc[(df_medical['county_name'] == 'Dolj') & (df_medical['uat_name'] == 'Filiasi'), 'uat_name'] = 'Oras Filiasi'
+df_medical.loc[(df_medical['county_name'] == 'Dolj') & (df_medical['uat_name'] == 'Segarcea'), 'uat_name'] = 'Oras Segarcea'
+
+df_medical.loc[(df_medical['county_name'] == 'Galati') & (df_medical['uat_name'] == 'Galati'), 'uat_name'] = 'Municipiul Galati'
+df_medical.loc[(df_medical['county_name'] == 'Galati') & (df_medical['uat_name'] == 'Tecuci'), 'uat_name'] = 'Municipiul Tecuci'
+df_medical.loc[(df_medical['county_name'] == 'Galati') & (df_medical['uat_name'] == 'Beresti'), 'uat_name'] = 'Oras Beresti'
+df_medical.loc[(df_medical['county_name'] == 'Galati') & (df_medical['uat_name'] == 'Tirgu Bujor'), 'uat_name'] = 'Oras Targu Bujor'
+
+df_medical.loc[(df_medical['county_name'] == 'Giurgiu') & (df_medical['uat_name'] == 'Giurgiu'), 'uat_name'] = 'Municipiul Giurgiu'
+df_medical.loc[(df_medical['county_name'] == 'Giurgiu') & (df_medical['uat_name'] == 'Bolintin-Vale'), 'uat_name'] = 'Oras Bolintin-Vale'
+df_medical.loc[(df_medical['county_name'] == 'Giurgiu') & (df_medical['uat_name'] == 'Mihailesti'), 'uat_name'] = 'Oras Mihailesti'
+
+df_medical.loc[(df_medical['county_name'] == 'Gorj') & (df_medical['uat_name'] == 'Motru'), 'uat_name'] = 'Municipiul Motru'
+df_medical.loc[(df_medical['county_name'] == 'Gorj') & (df_medical['uat_name'] == 'Tirgu Jiu'), 'uat_name'] = 'Municipiul Targu Jiu'
+df_medical.loc[(df_medical['county_name'] == 'Gorj') & (df_medical['uat_name'] == 'Bumbesti-Jiu'), 'uat_name'] = 'Oras Bumbesti-Jiu'
+df_medical.loc[(df_medical['county_name'] == 'Gorj') & (df_medical['uat_name'] == 'Novaci'), 'uat_name'] = 'Oras Novaci'
+df_medical.loc[(df_medical['county_name'] == 'Gorj') & (df_medical['uat_name'] == 'Rovinari'), 'uat_name'] = 'Oras Rovinari'
+df_medical.loc[(df_medical['county_name'] == 'Gorj') & (df_medical['uat_name'] == 'Tirgu Carbunesti'), 'uat_name'] = 'Oras Targu Carbunesti'
+df_medical.loc[(df_medical['county_name'] == 'Gorj') & (df_medical['uat_name'] == 'Ticleni'), 'uat_name'] = 'Oras Ticleni'
+df_medical.loc[(df_medical['county_name'] == 'Gorj') & (df_medical['uat_name'] == 'Tismana'), 'uat_name'] = 'Oras Tismana'
+df_medical.loc[(df_medical['county_name'] == 'Gorj') & (df_medical['uat_name'] == 'Turceni'), 'uat_name'] = 'Oras Turceni'
+
+df_medical.loc[(df_medical['county_name'] == 'Harghita') & (df_medical['uat_name'] == 'Gheorgheni'), 'uat_name'] = 'Municipiul Gheorgheni'
+df_medical.loc[(df_medical['county_name'] == 'Harghita') & (df_medical['uat_name'] == 'Miercurea Ciuc'), 'uat_name'] = 'Municipiul Miercurea Ciuc'
+df_medical.loc[(df_medical['county_name'] == 'Harghita') & (df_medical['uat_name'] == 'Odorheiu Secuiesc'), 'uat_name'] = 'Municipiul Odorheiu Secuiesc'
+df_medical.loc[(df_medical['county_name'] == 'Harghita') & (df_medical['uat_name'] == 'Toplita'), 'uat_name'] = 'Municipiul Toplita'
+df_medical.loc[(df_medical['county_name'] == 'Harghita') & (df_medical['uat_name'] == 'Baile Tusnad'), 'uat_name'] = 'Oras Baile Tusnad'
+df_medical.loc[(df_medical['county_name'] == 'Harghita') & (df_medical['uat_name'] == 'Balan'), 'uat_name'] = 'Oras Balan'
+df_medical.loc[(df_medical['county_name'] == 'Harghita') & (df_medical['uat_name'] == 'Borsec'), 'uat_name'] = 'Oras Borsec'
+df_medical.loc[(df_medical['county_name'] == 'Harghita') & (df_medical['uat_name'] == 'Cristuru Secuiesc'), 'uat_name'] = 'Oras Cristuru Secuiesc'
+df_medical.loc[(df_medical['county_name'] == 'Harghita') & (df_medical['uat_name'] == 'Vlahita'), 'uat_name'] = 'Oras Vlahita'
+
+df_medical.loc[(df_medical['county_name'] == 'Hunedoara') & (df_medical['uat_name'] == 'Brad'), 'uat_name'] = 'Municipiul Brad'
+df_medical.loc[(df_medical['county_name'] == 'Hunedoara') & (df_medical['uat_name'] == 'Deva'), 'uat_name'] = 'Municipiul Deva'
+df_medical.loc[(df_medical['county_name'] == 'Hunedoara') & (df_medical['uat_name'] == 'Hunedoara'), 'uat_name'] = 'Municipiul Hunedoara'
+df_medical.loc[(df_medical['county_name'] == 'Hunedoara') & (df_medical['uat_name'] == 'Lupeni'), 'uat_name'] = 'Municipiul Lupeni'
+df_medical.loc[(df_medical['county_name'] == 'Hunedoara') & (df_medical['uat_name'] == 'Orastie'), 'uat_name'] = 'Municipiul Orastie'
+df_medical.loc[(df_medical['county_name'] == 'Hunedoara') & (df_medical['uat_name'] == 'Petrosani'), 'uat_name'] = 'Municipiul Petrosani'
+df_medical.loc[(df_medical['county_name'] == 'Hunedoara') & (df_medical['uat_name'] == 'Vulcan'), 'uat_name'] = 'Municipiul Vulcan'
+df_medical.loc[(df_medical['county_name'] == 'Hunedoara') & (df_medical['uat_name'] == 'Aninoasa'), 'uat_name'] = 'Oras Aninoasa'
+df_medical.loc[(df_medical['county_name'] == 'Hunedoara') & (df_medical['uat_name'] == 'Calan'), 'uat_name'] = 'Oras Calan'
+df_medical.loc[(df_medical['county_name'] == 'Hunedoara') & (df_medical['uat_name'] == 'Geoagiu'), 'uat_name'] = 'Oras Geoagiu'
+df_medical.loc[(df_medical['county_name'] == 'Hunedoara') & (df_medical['uat_name'] == 'Hateg'), 'uat_name'] = 'Oras Hateg'
+df_medical.loc[(df_medical['county_name'] == 'Hunedoara') & (df_medical['uat_name'] == 'Petrila'), 'uat_name'] = 'Oras Petrila'
+df_medical.loc[(df_medical['county_name'] == 'Hunedoara') & (df_medical['uat_name'] == 'Simeria'), 'uat_name'] = 'Oras Simeria'
+df_medical.loc[(df_medical['county_name'] == 'Hunedoara') & (df_medical['uat_name'] == 'Uricani'), 'uat_name'] = 'Oras Uricani'
+
+df_medical.loc[(df_medical['county_name'] == 'Ialomita') & (df_medical['uat_name'] == 'Fetesti'), 'uat_name'] = 'Municipiul Fetesti'
+df_medical.loc[(df_medical['county_name'] == 'Ialomita') & (df_medical['uat_name'] == 'Slobozia'), 'uat_name'] = 'Municipiul Slobozia'
+df_medical.loc[(df_medical['county_name'] == 'Ialomita') & (df_medical['uat_name'] == 'Urziceni'), 'uat_name'] = 'Municipiul Urziceni'
+df_medical.loc[(df_medical['county_name'] == 'Ialomita') & (df_medical['uat_name'] == 'Amara'), 'uat_name'] = 'Oras Amara'
+df_medical.loc[(df_medical['county_name'] == 'Ialomita') & (df_medical['uat_name'] == 'Cazanesti'), 'uat_name'] = 'Oras Cazanesti'
+df_medical.loc[(df_medical['county_name'] == 'Ialomita') & (df_medical['uat_name'] == 'Fierbinti-Targ'), 'uat_name'] = 'Oras Fierbinti-Targ'
+df_medical.loc[(df_medical['county_name'] == 'Ialomita') & (df_medical['uat_name'] == 'Tandarei'), 'uat_name'] = 'Oras Tandarei'
+
+df_medical.loc[(df_medical['county_name'] == 'Iasi') & (df_medical['uat_name'] == 'Iasi'), 'uat_name'] = 'Municipiul Iasi'
+df_medical.loc[(df_medical['county_name'] == 'Iasi') & (df_medical['uat_name'] == 'Pascani'), 'uat_name'] = 'Municipiul Pascani'
+df_medical.loc[(df_medical['county_name'] == 'Iasi') & (df_medical['uat_name'] == 'Hirlau'), 'uat_name'] = 'Oras Harlau'
+df_medical.loc[(df_medical['county_name'] == 'Iasi') & (df_medical['uat_name'] == 'Podu Iloaiei'), 'uat_name'] = 'Oras Podu Iloaiei'
+df_medical.loc[(df_medical['county_name'] == 'Iasi') & (df_medical['uat_name'] == 'Targu Frumos'), 'uat_name'] = 'Oras Targu Frumos'
+
+df_medical.loc[(df_medical['county_name'] == 'Ilfov') & (df_medical['uat_name'] == 'Bragadiru'), 'uat_name'] = 'Oras Bragadiru'
+df_medical.loc[(df_medical['county_name'] == 'Ilfov') & (df_medical['uat_name'] == 'Buftea'), 'uat_name'] = 'Oras Buftea'
+df_medical.loc[(df_medical['county_name'] == 'Ilfov') & (df_medical['uat_name'] == 'Chitila'), 'uat_name'] = 'Oras Chitila'
+df_medical.loc[(df_medical['county_name'] == 'Ilfov') & (df_medical['uat_name'] == 'Magurele'), 'uat_name'] = 'Oras Magurele'
+df_medical.loc[(df_medical['county_name'] == 'Ilfov') & (df_medical['uat_name'] == 'Otopeni'), 'uat_name'] = 'Oras Otopeni'
+df_medical.loc[(df_medical['county_name'] == 'Ilfov') & (df_medical['uat_name'] == 'Pantelimon'), 'uat_name'] = 'Oras Pantelimon'
+df_medical.loc[(df_medical['county_name'] == 'Ilfov') & (df_medical['uat_name'] == 'Popesti Leordeni'), 'uat_name'] = 'Oras Popesti Leordeni'
+df_medical.loc[(df_medical['county_name'] == 'Ilfov') & (df_medical['uat_name'] == 'Voluntari'), 'uat_name'] = 'Oras Voluntari'
+
+df_medical.loc[(df_medical['county_name'] == 'Maramures') & (df_medical['uat_name'] == 'Baia Mare'), 'uat_name'] = 'Municipiul Baia Mare'
+df_medical.loc[(df_medical['county_name'] == 'Maramures') & (df_medical['uat_name'] == 'Sighetu Marmatiei'), 'uat_name'] = 'Municipiul Sighetu Marmatiei'
+df_medical.loc[(df_medical['county_name'] == 'Maramures') & (df_medical['uat_name'] == 'Baia Sprie'), 'uat_name'] = 'Oras Baia Sprie'
+df_medical.loc[(df_medical['county_name'] == 'Maramures') & (df_medical['uat_name'] == 'Borsa'), 'uat_name'] = 'Oras Borsa'
+df_medical.loc[(df_medical['county_name'] == 'Maramures') & (df_medical['uat_name'] == 'Cavnic'), 'uat_name'] = 'Oras Cavnic'
+df_medical.loc[(df_medical['county_name'] == 'Maramures') & (df_medical['uat_name'] == 'Dragomiresti'), 'uat_name'] = 'Oras Dragomiresti'
+df_medical.loc[(df_medical['county_name'] == 'Maramures') & (df_medical['uat_name'] == 'Salistea de Sus'), 'uat_name'] = 'Oras Salistea de Sus'
+df_medical.loc[(df_medical['county_name'] == 'Maramures') & (df_medical['uat_name'] == 'Seini'), 'uat_name'] = 'Oras Seini'
+df_medical.loc[(df_medical['county_name'] == 'Maramures') & (df_medical['uat_name'] == 'Somcuta Mare'), 'uat_name'] = 'Oras Somcuta Mare'
+df_medical.loc[(df_medical['county_name'] == 'Maramures') & (df_medical['uat_name'] == 'Tirgu Lapus'), 'uat_name'] = 'Oras Targu Lapus'
+df_medical.loc[(df_medical['county_name'] == 'Maramures') & (df_medical['uat_name'] == 'Tautii-Magheraus'), 'uat_name'] = 'Oras Tautii-Magheraus'
+df_medical.loc[(df_medical['county_name'] == 'Maramures') & (df_medical['uat_name'] == 'Ulmeni'), 'uat_name'] = 'Oras Ulmeni'
+df_medical.loc[(df_medical['county_name'] == 'Maramures') & (df_medical['uat_name'] == 'Viseu de Sus'), 'uat_name'] = 'Oras Viseu de Sus'
+
+df_medical.loc[(df_medical['county_name'] == 'Mehedinti') & (df_medical['uat_name'] == 'Drobeta-Turnu Severin'), 'uat_name'] = 'Municipiul Drobeta-Turnu Severin'
+df_medical.loc[(df_medical['county_name'] == 'Mehedinti') & (df_medical['uat_name'] == 'Orsova'), 'uat_name'] = 'Municipiul Orsova'
+df_medical.loc[(df_medical['county_name'] == 'Mehedinti') & (df_medical['uat_name'] == 'Baia de Arama'), 'uat_name'] = 'Oras Baia de Arama'
+df_medical.loc[(df_medical['county_name'] == 'Mehedinti') & (df_medical['uat_name'] == 'Strehaia'), 'uat_name'] = 'Oras Strehaia'
+df_medical.loc[(df_medical['county_name'] == 'Mehedinti') & (df_medical['uat_name'] == 'Vinju Mare'), 'uat_name'] = 'Oras Vanju Mare'
+
+df_medical.loc[(df_medical['county_name'] == 'Mures') & (df_medical['uat_name'] == 'Reghin'), 'uat_name'] = 'Municipiul Reghin'
+df_medical.loc[(df_medical['county_name'] == 'Mures') & (df_medical['uat_name'] == 'Sighisoara'), 'uat_name'] = 'Municipiul Sighisoara'
+df_medical.loc[(df_medical['county_name'] == 'Mures') & (df_medical['uat_name'] == 'Tirgu Mures'), 'uat_name'] = 'Municipiul Targu Mures'
+df_medical.loc[(df_medical['county_name'] == 'Mures') & (df_medical['uat_name'] == 'Tarnaveni'), 'uat_name'] = 'Municipiul Tarnaveni'
+df_medical.loc[(df_medical['county_name'] == 'Mures') & (df_medical['uat_name'] == 'Iernut'), 'uat_name'] = 'Oras Iernut'
+df_medical.loc[(df_medical['county_name'] == 'Mures') & (df_medical['uat_name'] == 'Ludus'), 'uat_name'] = 'Oras Ludus'
+df_medical.loc[(df_medical['county_name'] == 'Mures') & (df_medical['uat_name'] == 'Miercurea Nirajului'), 'uat_name'] = 'Oras Miercurea Nirajului'
+df_medical.loc[(df_medical['county_name'] == 'Mures') & (df_medical['uat_name'] == 'Sangeorgiu de Padure'), 'uat_name'] = 'Oras Sangeorgiu de Padure'
+df_medical.loc[(df_medical['county_name'] == 'Mures') & (df_medical['uat_name'] == 'Sarmasu'), 'uat_name'] = 'Oras Sarmasu'
+df_medical.loc[(df_medical['county_name'] == 'Mures') & (df_medical['uat_name'] == 'Sovata'), 'uat_name'] = 'Oras Sovata'
+df_medical.loc[(df_medical['county_name'] == 'Mures') & (df_medical['uat_name'] == 'Ungheni'), 'uat_name'] = 'Oras Ungheni'
+df_medical.loc[(df_medical['county_name'] == 'Mures') & (df_medical['uat_name'] == 'Fintinele'), 'uat_name'] = 'Fantanele'
+
+df_medical.loc[(df_medical['county_name'] == 'Neamt') & (df_medical['uat_name'] == 'Piatra Neamt'), 'uat_name'] = 'Municipiul Piatra-Neamt'
+df_medical.loc[(df_medical['county_name'] == 'Neamt') & (df_medical['uat_name'] == 'Roman'), 'uat_name'] = 'Municipiul Roman'
+df_medical.loc[(df_medical['county_name'] == 'Neamt') & (df_medical['uat_name'] == 'Bicaz'), 'uat_name'] = 'Oras Bicaz'
+df_medical.loc[(df_medical['county_name'] == 'Neamt') & (df_medical['uat_name'] == 'Roznov'), 'uat_name'] = 'Oras Roznov'
+df_medical.loc[(df_medical['county_name'] == 'Neamt') & (df_medical['uat_name'] == 'Tirgu Neamt'), 'uat_name'] = 'Oras Targu Neamt'
+
+df_medical.loc[(df_medical['county_name'] == 'Olt') & (df_medical['uat_name'] == 'Caracal'), 'uat_name'] = 'Municipiul Caracal'
+df_medical.loc[(df_medical['county_name'] == 'Olt') & (df_medical['uat_name'] == 'Slatina'), 'uat_name'] = 'Municipiul Slatina'
+df_medical.loc[(df_medical['county_name'] == 'Olt') & (df_medical['uat_name'] == 'Bals'), 'uat_name'] = 'Oras Bals'
+df_medical.loc[(df_medical['county_name'] == 'Olt') & (df_medical['uat_name'] == 'Corabia'), 'uat_name'] = 'Oras Corabia'
+df_medical.loc[(df_medical['county_name'] == 'Olt') & (df_medical['uat_name'] == 'Draganesti-Olt'), 'uat_name'] = 'Oras Draganesti-Olt'
+df_medical.loc[(df_medical['county_name'] == 'Olt') & (df_medical['uat_name'] == 'Piatra-Olt'), 'uat_name'] = 'Oras Piatra-Olt'
+df_medical.loc[(df_medical['county_name'] == 'Olt') & (df_medical['uat_name'] == 'Potcoava'), 'uat_name'] = 'Oras Potcoava'
+df_medical.loc[(df_medical['county_name'] == 'Olt') & (df_medical['uat_name'] == 'Scornicesti'), 'uat_name'] = 'Oras Scornicesti'
+
+df_medical.loc[(df_medical['county_name'] == 'Prahova') & (df_medical['uat_name'] == 'Campina'), 'uat_name'] = 'Municipiul Campina'
+df_medical.loc[(df_medical['county_name'] == 'Prahova') & (df_medical['uat_name'] == 'Ploiesti'), 'uat_name'] = 'Municipiul Ploiesti'
+df_medical.loc[(df_medical['county_name'] == 'Prahova') & (df_medical['uat_name'] == 'Azuga'), 'uat_name'] = 'Oras Azuga'
+df_medical.loc[(df_medical['county_name'] == 'Prahova') & (df_medical['uat_name'] == 'Baicoi'), 'uat_name'] = 'Oras Baicoi'
+df_medical.loc[(df_medical['county_name'] == 'Prahova') & (df_medical['uat_name'] == 'Boldesti-Scaeni'), 'uat_name'] = 'Oras Boldesti-Scaeni'
+df_medical.loc[(df_medical['county_name'] == 'Prahova') & (df_medical['uat_name'] == 'Breaza'), 'uat_name'] = 'Oras Breaza'
+df_medical.loc[(df_medical['county_name'] == 'Prahova') & (df_medical['uat_name'] == 'Busteni'), 'uat_name'] = 'Oras Busteni'
+df_medical.loc[(df_medical['county_name'] == 'Prahova') & (df_medical['uat_name'] == 'Comarnic'), 'uat_name'] = 'Oras Comarnic'
+df_medical.loc[(df_medical['county_name'] == 'Prahova') & (df_medical['uat_name'] == 'Mizil'), 'uat_name'] = 'Oras Mizil'
+df_medical.loc[(df_medical['county_name'] == 'Prahova') & (df_medical['uat_name'] == 'Plopeni'), 'uat_name'] = 'Oras Plopeni'
+df_medical.loc[(df_medical['county_name'] == 'Prahova') & (df_medical['uat_name'] == 'Sinaia'), 'uat_name'] = 'Oras Sinaia'
+df_medical.loc[(df_medical['county_name'] == 'Prahova') & (df_medical['uat_name'] == 'Slanic'), 'uat_name'] = 'Oras Slanic'
+df_medical.loc[(df_medical['county_name'] == 'Prahova') & (df_medical['uat_name'] == 'Urlati'), 'uat_name'] = 'Oras Urlati'
+df_medical.loc[(df_medical['county_name'] == 'Prahova') & (df_medical['uat_name'] == 'Valenii de Munte'), 'uat_name'] = 'Oras Valenii de Munte'
+
+df_medical.loc[(df_medical['county_name'] == 'Salaj') & (df_medical['uat_name'] == 'Zalau'), 'uat_name'] = 'Municipiul Zalau'
+df_medical.loc[(df_medical['county_name'] == 'Salaj') & (df_medical['uat_name'] == 'Cehu Silvaniei'), 'uat_name'] = 'Oras Cehu Silvaniei'
+df_medical.loc[(df_medical['county_name'] == 'Salaj') & (df_medical['uat_name'] == 'Jibou'), 'uat_name'] = 'Oras Jibou'
+df_medical.loc[(df_medical['county_name'] == 'Salaj') & (df_medical['uat_name'] == 'Simleu Silvaniei'), 'uat_name'] = 'Oras Simleu Silvaniei'
+
+df_medical.loc[(df_medical['county_name'] == 'Satu Mare') & (df_medical['uat_name'] == 'Carei'), 'uat_name'] = 'Municipiul Carei'
+df_medical.loc[(df_medical['county_name'] == 'Satu Mare') & (df_medical['uat_name'] == 'Satu Mare'), 'uat_name'] = 'Municipiul Satu Mare'
+df_medical.loc[(df_medical['county_name'] == 'Satu Mare') & (df_medical['uat_name'] == 'Ardud'), 'uat_name'] = 'Oras Ardud'
+df_medical.loc[(df_medical['county_name'] == 'Satu Mare') & (df_medical['uat_name'] == 'Livada'), 'uat_name'] = 'Oras Livada'
+df_medical.loc[(df_medical['county_name'] == 'Satu Mare') & (df_medical['uat_name'] == 'Negresti-Oas'), 'uat_name'] = 'Oras Negresti-Oas'
+df_medical.loc[(df_medical['county_name'] == 'Satu Mare') & (df_medical['uat_name'] == 'Tasnad'), 'uat_name'] = 'Oras Tasnad'
+
+df_medical.loc[(df_medical['county_name'] == 'Sibiu') & (df_medical['uat_name'] == 'Medias'), 'uat_name'] = 'Municipiul Medias'
+df_medical.loc[(df_medical['county_name'] == 'Sibiu') & (df_medical['uat_name'] == 'Sibiu'), 'uat_name'] = 'Municipiul Sibiu'
+df_medical.loc[(df_medical['county_name'] == 'Sibiu') & (df_medical['uat_name'] == 'Agnita'), 'uat_name'] = 'Oras Agnita'
+df_medical.loc[(df_medical['county_name'] == 'Sibiu') & (df_medical['uat_name'] == 'Avrig'), 'uat_name'] = 'Oras Avrig'
+df_medical.loc[(df_medical['county_name'] == 'Sibiu') & (df_medical['uat_name'] == 'Cisnadie'), 'uat_name'] = 'Oras Cisnadie'
+df_medical.loc[(df_medical['county_name'] == 'Sibiu') & (df_medical['uat_name'] == 'Copsa Mica'), 'uat_name'] = 'Oras Copsa Mica'
+df_medical.loc[(df_medical['county_name'] == 'Sibiu') & (df_medical['uat_name'] == 'Dumbraveni'), 'uat_name'] = 'Oras Dumbraveni'
+df_medical.loc[(df_medical['county_name'] == 'Sibiu') & (df_medical['uat_name'] == 'Miercurea Sibiului'), 'uat_name'] = 'Oras Miercurea Sibiului'
+df_medical.loc[(df_medical['county_name'] == 'Sibiu') & (df_medical['uat_name'] == 'Ocna Sibiului'), 'uat_name'] = 'Oras Ocna Sibiului'
+df_medical.loc[(df_medical['county_name'] == 'Sibiu') & (df_medical['uat_name'] == 'Saliste'), 'uat_name'] = 'Oras Saliste'
+df_medical.loc[(df_medical['county_name'] == 'Sibiu') & (df_medical['uat_name'] == 'Talmaciu'), 'uat_name'] = 'Oras Talmaciu'
+
+df_medical.loc[(df_medical['county_name'] == 'Suceava') & (df_medical['uat_name'] == 'Campulung Moldovenesc'), 'uat_name'] = 'Municipiul Campulung Moldovenesc'
+df_medical.loc[(df_medical['county_name'] == 'Suceava') & (df_medical['uat_name'] == 'Falticeni'), 'uat_name'] = 'Municipiul Falticeni'
+df_medical.loc[(df_medical['county_name'] == 'Suceava') & (df_medical['uat_name'] == 'Radauti'), 'uat_name'] = 'Municipiul Radauti'
+df_medical.loc[(df_medical['county_name'] == 'Suceava') & (df_medical['uat_name'] == 'Suceava'), 'uat_name'] = 'Municipiul Suceava'
+df_medical.loc[(df_medical['county_name'] == 'Suceava') & (df_medical['uat_name'] == 'Vatra Dornei'), 'uat_name'] = 'Municipiul Vatra Dornei'
+df_medical.loc[(df_medical['county_name'] == 'Suceava') & (df_medical['uat_name'] == 'Brosteni'), 'uat_name'] = 'Oras Brosteni'
+df_medical.loc[(df_medical['county_name'] == 'Suceava') & (df_medical['uat_name'] == 'Cajvana'), 'uat_name'] = 'Oras Cajvana'
+df_medical.loc[(df_medical['county_name'] == 'Suceava') & (df_medical['uat_name'] == 'Dolhasca'), 'uat_name'] = 'Oras Dolhasca'
+df_medical.loc[(df_medical['county_name'] == 'Suceava') & (df_medical['uat_name'] == 'Frasin'), 'uat_name'] = 'Oras Frasin'
+df_medical.loc[(df_medical['county_name'] == 'Suceava') & (df_medical['uat_name'] == 'Gura Humorului'), 'uat_name'] = 'Oras Gura Humorului'
+df_medical.loc[(df_medical['county_name'] == 'Suceava') & (df_medical['uat_name'] == 'Liteni'), 'uat_name'] = 'Oras Liteni'
+df_medical.loc[(df_medical['county_name'] == 'Suceava') & (df_medical['uat_name'] == 'Milisauti'), 'uat_name'] = 'Oras Milisauti'
+df_medical.loc[(df_medical['county_name'] == 'Suceava') & (df_medical['uat_name'] == 'Salcea'), 'uat_name'] = 'Oras Salcea'
+df_medical.loc[(df_medical['county_name'] == 'Suceava') & (df_medical['uat_name'] == 'Siret'), 'uat_name'] = 'Oras Siret'
+df_medical.loc[(df_medical['county_name'] == 'Suceava') & (df_medical['uat_name'] == 'Solca'), 'uat_name'] = 'Oras Solca'
+df_medical.loc[(df_medical['county_name'] == 'Suceava') & (df_medical['uat_name'] == 'Vicovu de Sus'), 'uat_name'] = 'Oras Vicovu de Sus'
+df_medical.loc[(df_medical['county_name'] == 'Suceava') & (df_medical['uat_name'] == 'Fintinele'), 'uat_name'] = 'Fantanele'
+
+df_medical.loc[(df_medical['county_name'] == 'Teleorman') & (df_medical['uat_name'] == 'Alexandria'), 'uat_name'] = 'Municipiul Alexandria'
+df_medical.loc[(df_medical['county_name'] == 'Teleorman') & (df_medical['uat_name'] == 'Rosiori de Vede'), 'uat_name'] = 'Municipiul Rosiori de Vede'
+df_medical.loc[(df_medical['county_name'] == 'Teleorman') & (df_medical['uat_name'] == 'Turnu Magurele'), 'uat_name'] = 'Municipiul Turnu Magurele'
+df_medical.loc[(df_medical['county_name'] == 'Teleorman') & (df_medical['uat_name'] == 'Videle'), 'uat_name'] = 'Oras Videle'
+df_medical.loc[(df_medical['county_name'] == 'Teleorman') & (df_medical['uat_name'] == 'Zimnicea'), 'uat_name'] = 'Oras Zimnicea'
+
+df_medical.loc[(df_medical['county_name'] == 'Timis') & (df_medical['uat_name'] == 'Lugoj'), 'uat_name'] = 'Municipiul Lugoj'
+df_medical.loc[(df_medical['county_name'] == 'Timis') & (df_medical['uat_name'] == 'Timisoara'), 'uat_name'] = 'Municipiul Timisoara'
+df_medical.loc[(df_medical['county_name'] == 'Timis') & (df_medical['uat_name'] == 'Buzias'), 'uat_name'] = 'Oras Buzias'
+df_medical.loc[(df_medical['county_name'] == 'Timis') & (df_medical['uat_name'] == 'Ciacova'), 'uat_name'] = 'Oras Ciacova'
+df_medical.loc[(df_medical['county_name'] == 'Timis') & (df_medical['uat_name'] == 'Deta'), 'uat_name'] = 'Oras Deta'
+df_medical.loc[(df_medical['county_name'] == 'Timis') & (df_medical['uat_name'] == 'Faget'), 'uat_name'] = 'Oras Faget'
+df_medical.loc[(df_medical['county_name'] == 'Timis') & (df_medical['uat_name'] == 'Gataia'), 'uat_name'] = 'Oras Gataia'
+df_medical.loc[(df_medical['county_name'] == 'Timis') & (df_medical['uat_name'] == 'Jimbolia'), 'uat_name'] = 'Oras Jimbolia'
+df_medical.loc[(df_medical['county_name'] == 'Timis') & (df_medical['uat_name'] == 'Recas'), 'uat_name'] = 'Oras Recas'
+df_medical.loc[(df_medical['county_name'] == 'Timis') & (df_medical['uat_name'] == 'Sannicolau Mare'), 'uat_name'] = 'Oras Sannicolau Mare'
+
+df_medical.loc[(df_medical['county_name'] == 'Tulcea') & (df_medical['uat_name'] == 'Tulcea'), 'uat_name'] = 'Municipiul Tulcea'
+df_medical.loc[(df_medical['county_name'] == 'Tulcea') & (df_medical['uat_name'] == 'Babadag'), 'uat_name'] = 'Oras Babadag'
+df_medical.loc[(df_medical['county_name'] == 'Tulcea') & (df_medical['uat_name'] == 'Isaccea'), 'uat_name'] = 'Oras Isaccea'
+df_medical.loc[(df_medical['county_name'] == 'Tulcea') & (df_medical['uat_name'] == 'Macin'), 'uat_name'] = 'Oras Macin'
+df_medical.loc[(df_medical['county_name'] == 'Tulcea') & (df_medical['uat_name'] == 'Sulina'), 'uat_name'] = 'Oras Sulina'
+
+df_medical.loc[(df_medical['county_name'] == 'Valcea') & (df_medical['uat_name'] == 'Dragasani'), 'uat_name'] = 'Municipiul Dragasani'
+df_medical.loc[(df_medical['county_name'] == 'Valcea') & (df_medical['uat_name'] == 'Ramnicu Valcea'), 'uat_name'] = 'Municipiul Ramnicu Valcea'
+df_medical.loc[(df_medical['county_name'] == 'Valcea') & (df_medical['uat_name'] == 'Babeni'), 'uat_name'] = 'Oras Babeni'
+df_medical.loc[(df_medical['county_name'] == 'Valcea') & (df_medical['uat_name'] == 'Baile Govora'), 'uat_name'] = 'Oras Baile Govora'
+df_medical.loc[(df_medical['county_name'] == 'Valcea') & (df_medical['uat_name'] == 'Baile Olanesti'), 'uat_name'] = 'Oras Baile Olanesti'
+df_medical.loc[(df_medical['county_name'] == 'Valcea') & (df_medical['uat_name'] == 'Balcesti'), 'uat_name'] = 'Oras Balcesti'
+df_medical.loc[(df_medical['county_name'] == 'Valcea') & (df_medical['uat_name'] == 'Berbesti'), 'uat_name'] = 'Oras Berbesti'
+df_medical.loc[(df_medical['county_name'] == 'Valcea') & (df_medical['uat_name'] == 'Brezoi'), 'uat_name'] = 'Oras Brezoi'
+df_medical.loc[(df_medical['county_name'] == 'Valcea') & (df_medical['uat_name'] == 'Calimanesti'), 'uat_name'] = 'Oras Calimanesti'
+df_medical.loc[(df_medical['county_name'] == 'Valcea') & (df_medical['uat_name'] == 'Horezu'), 'uat_name'] = 'Oras Horezu'
+df_medical.loc[(df_medical['county_name'] == 'Valcea') & (df_medical['uat_name'] == 'Ocnele Mari'), 'uat_name'] = 'Oras Ocnele Mari'
+
+df_medical.loc[(df_medical['county_name'] == 'Vaslui') & (df_medical['uat_name'] == 'Birlad'), 'uat_name'] = 'Municipiul Barlad'
+df_medical.loc[(df_medical['county_name'] == 'Vaslui') & (df_medical['uat_name'] == 'Husi'), 'uat_name'] = 'Municipiul Husi'
+df_medical.loc[(df_medical['county_name'] == 'Vaslui') & (df_medical['uat_name'] == 'Vaslui'), 'uat_name'] = 'Municipiul Vaslui'
+df_medical.loc[(df_medical['county_name'] == 'Vaslui') & (df_medical['uat_name'] == 'Murgeni'), 'uat_name'] = 'Oras Murgeni'
+df_medical.loc[(df_medical['county_name'] == 'Vaslui') & (df_medical['uat_name'] == 'Negresti'), 'uat_name'] = 'Oras Negresti'
+
+df_medical.loc[(df_medical['county_name'] == 'Vrancea') & (df_medical['uat_name'] == 'Adjud'), 'uat_name'] = 'Municipiul Adjud'
+df_medical.loc[(df_medical['county_name'] == 'Vrancea') & (df_medical['uat_name'] == 'Focsani'), 'uat_name'] = 'Municipiul Focsani'
+df_medical.loc[(df_medical['county_name'] == 'Vrancea') & (df_medical['uat_name'] == 'Marasesti'), 'uat_name'] = 'Oras Marasesti'
+df_medical.loc[(df_medical['county_name'] == 'Vrancea') & (df_medical['uat_name'] == 'Odobesti'), 'uat_name'] = 'Oras Odobesti'
+df_medical.loc[(df_medical['county_name'] == 'Vrancea') & (df_medical['uat_name'] == 'Panciu'), 'uat_name'] = 'Oras Panciu'
+```
+
+```{python compute-competitiveness}
+df_election = df_election[['county_name', 'uat_name', 'total_votes_cast', 'aleg_total', 'votes', 'candidat']]
+
+df_competitive = (
+  df_election.
+    assign(share_vote = lambda x: (x.votes * 100)/x.total_votes_cast).
+    drop(['votes', 'total_votes_cast', 'aleg_total', 'candidat'], axis = 1).
+    sort_values(by = ['county_name', 'uat_name', 'share_vote'],
+               ascending = [True, True, False]).
+    groupby(['county_name', 'uat_name']).
+    head(2).
+    reset_index(drop = True)
+)
+
+df_competitive['diff_share'] = df_competitive.groupby(['county_name', 'uat_name'])['share_vote'].diff(periods = -1).fillna(0)
+df_competitive = df_competitive.groupby(['county_name', 'uat_name'], as_index = False)['diff_share'].sum()
+```
+
+I also compute here the turnout rate in the elections.
+
+```{python compute-engagement}
+df_turnout = (
+  df_election.
+    assign(turnout = lambda x: (x.total_votes_cast * 100)/x.aleg_total).
+    drop(['votes', 'total_votes_cast', 'aleg_total', 'candidat'], axis = 1)
+)
+
+df_turnout = df_turnout.groupby(['county_name', 'uat_name'], as_index = False)['turnout'].mean()
+```
+
+## Population
+
+```{python compute-diversity}
+df_diversity = (
+  df_diversity.
+    assign(share_romanian = lambda x: (x.romanians * 100) / (x.total_residents - x.unknown)).
+    drop(['total_residents', 'romanians', 'unknown'], axis = 1)
+)
+
+df_diversity.loc[(df_diversity['county_name'] == 'Calarasi') & (df_diversity['uat_name'] == 'Oras Lehliu- Gara'), 'uat_name'] = 'Oras Lehliu-Gara'
+df_diversity.loc[(df_diversity['county_name'] == 'Tulcea') & (df_diversity['uat_name'] == 'I.C.Bratianu'), 'uat_name'] = 'I.C. Bratianu'
+```
+
+
+# Merging
+
+The base for the merging process will be the Covid-19 stacked vaccination data. To this, the remaining data sets will be merged, as time-invariant characteristics of the localities.
+
+```{python merge-data-1}
+df_final = df_covid.merge(df_diversity,
+                         on = ['county_name', 'uat_name'],
+                         how = 'left')
+```
+
+The first challenge here appears for Bucharest, where local elections are separately organized in the 6 districts (sectors) of the city. To overcome this, I used the _average_ of the difference in vote shares between winner and runner up as a proxy for the competitiveness of Bucharest as a whole.^[For this particular election cycle, Districts 1, 2, and 5 were more competitive than 3, 4, and 6.] This average competitiveness in 2020 was 10,03961332.
+
+The second challenge concerns localities with a 0 difference in vote share. This can be produced in 2 ways:
+
+1. A candidate ran unopposed in the election, in which case the algorithm produces an incorrect value of 0
+2. The top 2 candidates received the exact same share of votes, in which case the algorithm produces a correct value of 0
+
+To address this, all 0 values were coverted to 100, except in the case of 7 localities where the 0 value was justified.
+
+```{python merge-data-2}
+df_final = df_final.merge(df_competitive,
+                          on = ['county_name', 'uat_name'],
+                          how = 'left')
+df_final.loc[(df_final['county_name'] == 'Bucuresti') & (df_final['uat_name'] == 'Municipiul Bucuresti'), 'diff_share'] = 10.03961332
+
+df_final.loc[df_final['diff_share'] == 0, 'diff_share'] = 100
+df_final.loc[(df_final['county_name'] == 'Bistrita-Nasaud') & (df_final['uat_name'] == 'Rebra'), 'diff_share'] = 0
+df_final.loc[(df_final['county_name'] == 'Teleorman') & (df_final['uat_name'] == 'Tecuci'), 'diff_share'] = 0
+df_final.loc[(df_final['county_name'] == 'Teleorman') & (df_final['uat_name'] == 'Balaci'), 'diff_share'] = 0
+df_final.loc[(df_final['county_name'] == 'Timis') & (df_final['uat_name'] == 'Ortisoara'), 'diff_share'] = 0
+df_final.loc[(df_final['county_name'] == 'Timis') & (df_final['uat_name'] == 'Calacea'), 'diff_share'] = 0
+df_final.loc[(df_final['county_name'] == 'Timis') & (df_final['uat_name'] == 'Cornesti'), 'diff_share'] = 0
+df_final.loc[(df_final['county_name'] == 'Timis') & (df_final['uat_name'] == 'Seceani'), 'diff_share'] = 0
+```
+
+As above, for turnout rate we have the same problem for Bucharest (6 separate elections with different turnout rates). We can easily correct this by hand, with the correct rate: 35,9550064%.
+
+Due to fraud, the first round results in Moldova Noua (county Caras-Severin) were anulled, and a new election was ordered. This was carried out on January 24, 2021, with a turnout of 36,37%. The winner received 68% of the votes, with 32% going to the runner-up.
+
+```{python merge-data-3}
+df_final = df_final.merge(df_turnout,
+                          on = ['county_name', 'uat_name'],
+                          how = 'left')
+df_final.loc[(df_final['county_name'] == 'Bucuresti') & (df_final['uat_name'] == 'Municipiul Bucuresti'), 'turnout'] = 35.9550064
+df_final.loc[(df_final['county_name'] == 'Caras-Severin') & (df_final['uat_name'] == 'Oras Moldova Noua'), 'turnout'] = 36.37
+df_final.loc[(df_final['county_name'] == 'Caras-Severin') & (df_final['uat_name'] == 'Oras Moldova Noua'), 'diff_share'] = 36
+```
+
+Unfortunately, there are still many cases in the data on local-level doctors where an exact match cannot be performed. In this instance, we resort to fuzzy matching through the `fuzzywuzzy` library.
+
+```{python merge-data-4}
+df_final['key_1'] = df_final['county_name'] + ' - ' + df_final['uat_name']
+df_medical['key_2'] = df_medical['county_name'] + ' - ' + df_medical['uat_name']
+df_medical.drop(['county_name', 'uat_name'],
+                axis = 1,
+                inplace = True)
+
+df_merged = fuzzy_merge(df_final,
+                        df_medical,
+                        'key_1',
+                        'key_2',
+                        limit = 1)
+
+df_merged.drop(['key_1', 'matches'],
+               axis = 1,
+               inplace = True)
+```
+
+# Save data
+
+Finally, we save the merged data on the hard drive.
+
+```{python save-data}
+df_merged.to_feather('../../02-data/14-merged/merged-locality.feather')
+```
